@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace GrumPHP\Console;
 
 use GrumPHP\Configuration\ContainerFactory;
@@ -52,9 +54,6 @@ class Application extends SymfonyConsole
         parent::__construct(self::APP_NAME, self::APP_VERSION);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     protected function getDefaultInputDefinition()
     {
         $definition = parent::getDefaultInputDefinition();
@@ -71,9 +70,6 @@ class Application extends SymfonyConsole
         return $definition;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     protected function getDefaultCommands()
     {
         $commands = parent::getDefaultCommands();
@@ -110,9 +106,6 @@ class Application extends SymfonyConsole
         return $commands;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     protected function getDefaultHelperSet()
     {
         $helperSet = parent::getDefaultHelperSet();
@@ -132,10 +125,7 @@ class Application extends SymfonyConsole
         return $helperSet;
     }
 
-    /**
-     * @return ContainerBuilder
-     */
-    protected function getContainer()
+    protected function getContainer(): ContainerBuilder
     {
         if ($this->container) {
             return $this->container;
@@ -155,9 +145,6 @@ class Application extends SymfonyConsole
         return $this->container;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     protected function configureIO(InputInterface $input, OutputInterface $output)
     {
         parent::configureIO($input, $output);
@@ -173,10 +160,7 @@ class Application extends SymfonyConsole
         }
     }
 
-    /**
-     * @return string
-     */
-    protected function getDefaultConfigPath()
+    protected function getDefaultConfigPath(): string
     {
         if ($this->configDefaultPath) {
             return $this->configDefaultPath;
@@ -191,17 +175,14 @@ class Application extends SymfonyConsole
         return $this->configDefaultPath;
     }
 
-    /**
-     * @return Helper\ComposerHelper
-     */
-    protected function initializeComposerHelper()
+    protected function initializeComposerHelper(): Helper\ComposerHelper
     {
         if ($this->composerHelper) {
             return $this->composerHelper;
         }
 
         try {
-            $composerFile = getcwd() . DIRECTORY_SEPARATOR . 'composer.json';
+            $composerFile = getcwd().DIRECTORY_SEPARATOR.'composer.json';
             $configuration = Composer::loadConfiguration();
             Composer::ensureProjectBinDirInSystemPath($configuration->get('bin-dir'));
             $rootPackage = Composer::loadRootPackageFromJson($composerFile, $configuration);
@@ -214,13 +195,9 @@ class Application extends SymfonyConsole
     }
 
     /**
-     * Prefixes the cwd to the path given by the user
-     *
-     * @param string $configPath
-     *
-     * @return string
+     * Prefixes the cwd to the path given by the user.
      */
-    private function updateUserConfigPath($configPath)
+    private function updateUserConfigPath(string $configPath): string
     {
         if ($configPath !== $this->getDefaultConfigPath()) {
             $configPath = getcwd().DIRECTORY_SEPARATOR.$configPath;
@@ -229,9 +206,6 @@ class Application extends SymfonyConsole
         return $configPath;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function run(InputInterface $input = null, OutputInterface $output = null)
     {
         /** @var ConsoleIO $io */

@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace GrumPHP\Task\Git;
 
 use Gitonomy\Git\Exception\ProcessException;
 use GrumPHP\Runner\TaskResult;
+use GrumPHP\Runner\TaskResultInterface;
 use GrumPHP\Task\Context\ContextInterface;
 use GrumPHP\Task\Context\GitPreCommitContext;
 use GrumPHP\Task\Context\RunContext;
@@ -14,53 +17,30 @@ use GrumPHP\Task\TaskInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use Gitonomy\Git\Repository;
 
-/**
- * Git BranchName Task
- */
 class BranchName implements TaskInterface
 {
-
-    /**
-     * @var GrumPHP
-     */
     protected $grumPHP;
-
-    /**
-     * @var Repository
-     */
     protected $repository;
 
-    /**
-     * @param GrumPHP $grumPHP
-     */
     public function __construct(GrumPHP $grumPHP, Repository $repository)
     {
         $this->grumPHP = $grumPHP;
         $this->repository = $repository;
     }
 
-    /**
-     * @return string
-     */
-    public function getName()
+    public function getName(): string
     {
         return 'git_branch_name';
     }
 
-    /**
-     * @return array
-     */
-    public function getConfiguration()
+    public function getConfiguration(): array
     {
         $configured = $this->grumPHP->getTaskConfiguration($this->getName());
 
         return $this->getConfigurableOptions()->resolve($configured);
     }
 
-    /**
-     * @return OptionsResolver
-     */
-    public function getConfigurableOptions()
+    public function getConfigurableOptions(): OptionsResolver
     {
         $resolver = new OptionsResolver();
         $resolver->setDefaults([
@@ -71,30 +51,17 @@ class BranchName implements TaskInterface
 
         $resolver->addAllowedTypes('matchers', ['array']);
         $resolver->addAllowedTypes('additional_modifiers', ['string']);
-        $resolver->addAllowedTypes('allow_detached_head', ['boolean']);
+        $resolver->addAllowedTypes('allow_detached_head', ['bool']);
 
         return $resolver;
     }
 
-    /**
-     * @param ContextInterface $context
-     *
-     * @return bool
-     */
-    public function canRunInContext(ContextInterface $context)
+    public function canRunInContext(ContextInterface $context): bool
     {
         return $context instanceof RunContext || $context instanceof GitPreCommitContext;
     }
 
-    /**
-     * @param array $config
-     * @param string $name
-     * @param string $rule
-     * @param string $ruleName
-     *
-     * @throws RuntimeException
-     */
-    private function runMatcher(array $config, $name, $rule, $ruleName)
+    private function runMatcher(array $config, string $name, string $rule)
     {
         $regex = new Regex($rule);
 
@@ -102,16 +69,11 @@ class BranchName implements TaskInterface
         array_map([$regex, 'addPatternModifier'], $additionalModifiersArray);
 
         if (!preg_match((string) $regex, $name)) {
-            throw new RuntimeException("Rule not matched: \"$ruleName\" $rule");
+            throw new RuntimeException("Rule not matched: $rule");
         }
     }
 
-    /**
-     * @param ContextInterface|RunContext $context
-     *
-     * @return TaskResult
-     */
-    public function run(ContextInterface $context)
+    public function run(ContextInterface $context): TaskResultInterface
     {
         $config = $this->getConfiguration();
         $exceptions = [];
@@ -122,13 +84,14 @@ class BranchName implements TaskInterface
             if ($config['allow_detached_head']) {
                 return TaskResult::createPassed($this, $context);
             }
-            $message = "Branch naming convention task is not allowed on a detached HEAD.";
+            $message = 'Branch naming convention task is not allowed on a detached HEAD.';
+
             return TaskResult::createFailed($this, $context, $message);
         }
 
-        foreach ($config['matchers'] as $ruleName => $rule) {
+        foreach ($config['matchers'] as $rule) {
             try {
-                $this->runMatcher($config, $name, $rule, $ruleName);
+                $this->runMatcher($config, $name, $rule);
             } catch (RuntimeException $e) {
                 $exceptions[] = $e->getMessage();
             }
