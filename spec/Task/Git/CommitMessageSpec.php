@@ -42,6 +42,10 @@ class CommitMessageSpec extends ObjectBehavior
         $options->getDefinedOptions()->shouldContain('multiline');
         $options->getDefinedOptions()->shouldContain('matchers');
         $options->getDefinedOptions()->shouldContain('additional_modifiers');
+        $options->getDefinedOptions()->shouldContain('enforce_no_subject_punctuations');
+        $options->getDefinedOptions()->shouldContain('enforce_type_scope_conventions');
+        $options->getDefinedOptions()->shouldContain('types');
+        $options->getDefinedOptions()->shouldContain('scopes');
     }
 
     function it_is_initializable()
@@ -605,5 +609,196 @@ MSG;
         $result = $this->run($context);
         $result->shouldBeAnInstanceOf(TaskResultInterface::class);
         $result->isPassed()->shouldBe(true);
+    }
+
+    function it_should_pass_when_enforce_type_scope_conventions_is_false(
+        GrumPHP $grumPHP,
+        GitCommitMsgContext $context
+    ) {
+        $grumPHP->getTaskConfiguration('git_commit_message')->willReturn([
+            'allow_empty_message' => false,
+            'enforce_capitalized_subject' => false,
+            'enforce_no_subject_trailing_period' => false,
+            'enforce_single_lined_subject' => true,
+            'enforce_type_scope_conventions' => false,
+        ]);
+
+        $commitMessage = <<<'MSG'
+this subject does not follow the type scope conventions
+
+pass because we set enforce_type_scope_conventions to false
+
+And footer #12
+MSG;
+
+        $context->getCommitMessage()->willReturn($commitMessage);
+
+        $result = $this->run($context);
+        $result->shouldBeAnInstanceOf(TaskResultInterface::class);
+        $result->isPassed()->shouldBe(true);
+    }
+
+    function it_should_fail_when_enforce_type_scope_conventions_is_true_and_does_not_follow_conventions(
+        GrumPHP $grumPHP,
+        GitCommitMsgContext $context
+    ) {
+        $grumPHP->getTaskConfiguration('git_commit_message')->willReturn([
+            'allow_empty_message' => false,
+            'enforce_capitalized_subject' => false,
+            'enforce_no_subject_trailing_period' => false,
+            'enforce_single_lined_subject' => true,
+            'enforce_type_scope_conventions' => true,
+        ]);
+
+        $commitMessage = <<<'MSG'
+this subject does not follow the type scope conventions
+
+The body ...
+
+And footer #12
+MSG;
+
+        $context->getCommitMessage()->willReturn($commitMessage);
+
+        $result = $this->run($context);
+        $result->shouldBeAnInstanceOf(TaskResultInterface::class);
+        $result->isPassed()->shouldBe(false);
+    }
+
+    function it_should_fail_when_enforce_type_scope_conventions_is_true_and_does_not_use_an_available_type(
+        GrumPHP $grumPHP,
+        GitCommitMsgContext $context
+    ) {
+        $grumPHP->getTaskConfiguration('git_commit_message')->willReturn([
+            'allow_empty_message' => false,
+            'enforce_capitalized_subject' => false,
+            'enforce_no_subject_trailing_period' => false,
+            'enforce_single_lined_subject' => true,
+            'enforce_type_scope_conventions' => true,
+            'types' => ['fix']
+        ]);
+
+        $commitMessage = <<<'MSG'
+docs: this type is not in the available types array
+
+The body ...
+
+And footer #12
+MSG;
+
+        $context->getCommitMessage()->willReturn($commitMessage);
+
+        $result = $this->run($context);
+        $result->shouldBeAnInstanceOf(TaskResultInterface::class);
+        $result->isPassed()->shouldBe(false);
+    }
+
+    function it_should_pass_when_enforce_type_scope_conventions_is_true_and_does_use_an_available_type(
+        GrumPHP $grumPHP,
+        GitCommitMsgContext $context
+    ) {
+        $grumPHP->getTaskConfiguration('git_commit_message')->willReturn([
+            'allow_empty_message' => false,
+            'enforce_capitalized_subject' => false,
+            'enforce_no_subject_trailing_period' => false,
+            'enforce_single_lined_subject' => true,
+            'enforce_type_scope_conventions' => true,
+            'types' => ['fix']
+        ]);
+
+        $commitMessage = <<<'MSG'
+fix: this type is in the available types array
+
+The body ...
+
+And footer #12
+MSG;
+
+        $context->getCommitMessage()->willReturn($commitMessage);
+
+        $result = $this->run($context);
+        $result->shouldBeAnInstanceOf(TaskResultInterface::class);
+        $result->isPassed()->shouldBe(true);
+    }
+
+    function it_should_fail_when_enforce_type_scope_conventions_is_true_and_does_not_use_an_available_scope(
+        GrumPHP $grumPHP,
+        GitCommitMsgContext $context
+    ) {
+        $grumPHP->getTaskConfiguration('git_commit_message')->willReturn([
+            'allow_empty_message' => false,
+            'enforce_capitalized_subject' => false,
+            'enforce_no_subject_trailing_period' => false,
+            'enforce_single_lined_subject' => true,
+            'enforce_type_scope_conventions' => true,
+            'scopes' => ['user']
+        ]);
+
+        $commitMessage = <<<'MSG'
+fix(index): this scope is not in the available scopes array
+
+The body ...
+
+And footer #12
+MSG;
+
+        $context->getCommitMessage()->willReturn($commitMessage);
+
+        $result = $this->run($context);
+        $result->shouldBeAnInstanceOf(TaskResultInterface::class);
+        $result->isPassed()->shouldBe(false);
+    }
+
+    function it_should_pass_when_enforce_type_scope_conventions_is_true_and_does_use_an_available_scope(
+        GrumPHP $grumPHP,
+        GitCommitMsgContext $context
+    ) {
+        $grumPHP->getTaskConfiguration('git_commit_message')->willReturn([
+            'allow_empty_message' => false,
+            'enforce_capitalized_subject' => false,
+            'enforce_no_subject_trailing_period' => false,
+            'enforce_single_lined_subject' => true,
+            'enforce_type_scope_conventions' => true,
+            'scopes' => ['user']
+        ]);
+
+        $commitMessage = <<<'MSG'
+fix(user): this scope is in the available scopes array
+
+The body ...
+
+And footer #12
+MSG;
+
+        $context->getCommitMessage()->willReturn($commitMessage);
+
+        $result = $this->run($context);
+        $result->shouldBeAnInstanceOf(TaskResultInterface::class);
+        $result->isPassed()->shouldBe(true);
+    }
+
+    function it_should_fail_if_subject_contains_punctuations(GrumPHP $grumPHP, GitCommitMsgContext $context)
+    {
+        $grumPHP->getTaskConfiguration('git_commit_message')->willReturn([
+            'allow_empty_message' => false,
+            'enforce_capitalized_subject' => false,
+            'enforce_no_subject_trailing_period' => false,
+            'enforce_single_lined_subject' => true,
+            'enforce_no_subject_punctuations' => true,
+        ]);
+
+        $commitMessage = <<<'MSG'
+fix(user): this subject has punctuations!
+
+The body ...
+
+And footer #12 ?
+MSG;
+
+        $context->getCommitMessage()->willReturn($commitMessage);
+
+        $result = $this->run($context);
+        $result->shouldBeAnInstanceOf(TaskResultInterface::class);
+        $result->isPassed()->shouldBe(false);
     }
 }
