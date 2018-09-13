@@ -9,6 +9,7 @@ use GrumPHP\Task\Context\ContextInterface;
 use GrumPHP\Task\Context\GitCommitMsgContext;
 use GrumPHP\Task\TaskInterface;
 use GrumPHP\Util\Regex;
+use GrumPHP\Util\Str;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 
 /**
@@ -20,6 +21,11 @@ class CommitMessage implements TaskInterface
      * @var GrumPHP
      */
     private $grumPHP;
+
+    /**
+     * @var array $exceptions
+     */
+    private $exceptions = [];
 
     /**
      * @param GrumPHP $grumPHP
@@ -55,25 +61,33 @@ class CommitMessage implements TaskInterface
         $resolver = new OptionsResolver();
         $resolver->setDefaults([
             'allow_empty_message' => false,
+            'enforce_type_scope_conventions' => false,
             'enforce_capitalized_subject' => true,
+            'enforce_no_subject_punctuations' => false,
             'enforce_no_subject_trailing_period' => true,
             'enforce_single_lined_subject' => true,
             'max_body_width' => 72,
             'max_subject_width' => 60,
             'case_insensitive' => true,
             'multiline' => true,
+            'types' => [],
+            'scopes' => [],
             'matchers' => [],
-            'additional_modifiers' => ''
+            'additional_modifiers' => '',
         ]);
 
         $resolver->addAllowedTypes('allow_empty_message', ['bool']);
+        $resolver->addAllowedTypes('enforce_type_scope_conventions', ['bool']);
         $resolver->addAllowedTypes('enforce_capitalized_subject', ['bool']);
+        $resolver->addAllowedTypes('enforce_no_subject_punctuations', ['bool']);
         $resolver->addAllowedTypes('enforce_no_subject_trailing_period', ['bool']);
         $resolver->addAllowedTypes('enforce_single_lined_subject', ['bool']);
         $resolver->addAllowedTypes('max_body_width', ['int']);
         $resolver->addAllowedTypes('max_subject_width', ['int']);
         $resolver->addAllowedTypes('case_insensitive', ['bool']);
         $resolver->addAllowedTypes('multiline', ['bool']);
+        $resolver->addAllowedTypes('types', ['array']);
+        $resolver->addAllowedTypes('scopes', ['array']);
         $resolver->addAllowedTypes('matchers', ['array']);
         $resolver->addAllowedTypes('additional_modifiers', ['string']);
 
@@ -99,7 +113,6 @@ class CommitMessage implements TaskInterface
     {
         $config = $this->getConfiguration();
         $commitMessage = $context->getCommitMessage();
-        $exceptions = [];
 
         if (!(bool) $config['allow_empty_message'] && trim($commitMessage) === '') {
             return TaskResult::createFailed(
@@ -125,6 +138,14 @@ class CommitMessage implements TaskInterface
             );
         }
 
+        if ((bool) $config['enforce_no_subject_punctuations'] && $this->subjectHasPunctuations($context)) {
+            return TaskResult::createFailed(
+                $this,
+                $context,
+                'Please omit all punctuations from commit message subject.'
+            );
+        }
+
         if ((bool) $config['enforce_no_subject_trailing_period'] && $this->subjectHasTrailingPeriod($context)) {
             return TaskResult::createFailed(
                 $this,
@@ -133,16 +154,20 @@ class CommitMessage implements TaskInterface
             );
         }
 
+        if ((bool) $config['enforce_type_scope_conventions'] && !$this->followsTypeScopeConventions($context)) {
+            return TaskResult::createFailed($this, $context, implode(PHP_EOL, $this->exceptions));
+        }
+
         foreach ($config['matchers'] as $ruleName => $rule) {
             try {
                 $this->runMatcher($config, $commitMessage, $rule, $ruleName);
             } catch (RuntimeException $e) {
-                $exceptions[] = $e->getMessage();
+                $this->exceptions[] = $e->getMessage();
             }
         }
 
-        if (count($exceptions)) {
-            return TaskResult::createFailed($this, $context, implode(PHP_EOL, $exceptions));
+        if (count($this->exceptions)) {
+            return TaskResult::createFailed($this, $context, implode(PHP_EOL, $this->exceptions));
         }
 
         return $this->enforceTextWidth($context);
@@ -233,6 +258,27 @@ class CommitMessage implements TaskInterface
         }
 
         return mb_strlen($match[0]);
+    }
+
+    /**
+     * @param ContextInterface $context
+     *
+     * @return bool
+     */
+    private function subjectHasPunctuations(ContextInterface $context)
+    {
+        $commitMessage = $context->getCommitMessage();
+        $subject = strtok($commitMessage, PHP_EOL);
+
+        if (trim($commitMessage) === '') {
+            return false;
+        }
+
+        if (Str::contains($subject, ['.', '!', '?', ','])) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -331,5 +377,42 @@ class CommitMessage implements TaskInterface
         return array_values(array_filter($lines, function ($line) {
             return strpos($line, '#') !== 0;
         }));
+    }
+
+    /**
+     * @param ContextInterface $context
+     *
+     * @return bool
+     */
+    private function followsTypeScopeConventions($context)
+    {
+        $config = $this->getConfiguration();
+        $commitMessage = $context->getCommitMessage();
+
+        $typesPattern = '([a-zA-Z0-9]+)';
+        $scopesPattern = '(:\s|(\(.+\)?:\s))';
+        $subjectPattern = '([a-zA-Z0-9-_ #@\'\/\\"]+)';
+        $mergePattern = '(Merge branch \'.+\'\s.+|Merge remote-tracking branch \'.+\'|Merge pull request #\d+\s.+)';
+
+        if (count($config['types']) > 0) {
+            $types = implode($config['types'], '|');
+            $typesPattern = '(' . $types . ')';
+        }
+
+        if (count($config['scopes']) > 0) {
+            $scopes = implode($config['scopes'], '|');
+            $scopesPattern = '(:\s|(\(' . $scopes . '\)?:\s))';
+        }
+
+        $rule = '/^' . $typesPattern . $scopesPattern . $subjectPattern . '|' . $mergePattern . '/';
+
+        try {
+            $this->runMatcher($config, $commitMessage, $rule, 'Invalid Type/Scope Format');
+        } catch (RuntimeException $e) {
+            $this->exceptions[] = $e->getMessage();
+            return false;
+        }
+
+        return true;
     }
 }
